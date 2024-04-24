@@ -1,0 +1,149 @@
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "addprinc -randkey zookeeper/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "addprinc -randkey kafka/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "addprinc -randkey producer/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "addprinc -randkey consumer/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "addprinc -randkey kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "addprinc -randkey host/kafka-centos-8@KAFKA.DOMAIN"
+
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "ktadd -k /etc/security/keytabs/zookeeper-kafka-centos-8.keytab zookeeper/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "ktadd -k /etc/security/keytabs//kafka-kafka-centos-8.keytab kafka/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "ktadd -k /etc/security/keytabs/producer-kafka-centos-8.keytab producer/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "ktadd -k /etc/security/keytabs/consumer-kafka-centos-8.keytab consumer/kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "ktadd -k /etc/security/keytabs/kafka-centos-8.keytab kafka-centos-8@KAFKA.DOMAIN"
+docker compose exec -it kdc /usr/sbin/kadmin.local -q "ktadd -k /etc/security/keytabs/host-kafka-centos-8.keytab host/kafka-centos-8@KAFKA.DOMAIN"
+
+docker compose exec -it kdc /usr/sbin/kadmin.local -q listprincs | grep kafka-centos-8
+
+docker compose exec -it kdc /bin/bash
+cp /etc/security/keytabs/host-kafka-centos-8.keytab /etc/krb5.keytab
+kinit -kt /etc/krb5.keytab host/kafka-centos-8@KAFKA.DOMAIN
+klist -l
+
+vi /opt/kafka/config/zookeeper.jaas.conf
+
+Client {
+    com.sun.security.auth.module.Krb5LoginModule required debug=true
+    useKeyTab=true
+    storeKey=true
+    useTicketCache=false
+    keyTab="/opt/docker/kerberos/keytabs/zookeeper-kafka-centos-8.keytab"
+    principal="zookeeper/kafka-centos-8@KAFKA.DOMAIN";
+};
+
+Server {
+    com.sun.security.auth.module.Krb5LoginModule required debug=true
+    useKeyTab=true
+    storeKey=true
+    useTicketCache=false
+    keyTab="/opt/docker/kerberos/keytabs/zookeeper-kafka-centos-8.keytab"
+    principal="zookeeper/kafka-centos-8@KAFKA.DOMAIN";
+};
+
+vi /opt/kafka/config/zookeeper.sasl-gssapi.properties
+
+dataDir=/opt/kafka/.zookeeper
+clientPort=2181
+maxClientCnxns=0
+admin.enableServer=false
+#
+# SASL + GSSAPI
+#
+authProvider.sasl=org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+
+
+
+vi /opt/kafka/config/server.jaas.conf
+
+KafkaServer {
+    com.sun.security.auth.module.Krb5LoginModule required
+    useKeyTab=true
+    storeKey=true
+    keyTab="/etc/security/keytabs/kafka-kafka-centos-8.keytab"
+    principal="kafka/kafka-centos-8@KAFKA.DOMAIN";
+};
+
+vi kafka/config/server.sasl-gssapi.properties
+
+broker.id=0
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+log.dirs=/opt/kafka/.kafka-logs
+num.partitions=1
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=1
+transaction.state.log.replication.factor=1
+transaction.state.log.min.isr=1
+log.retention.hours=168
+log.retention.check.interval.ms=300000
+zookeeper.connect=localhost:2181
+zookeeper.connection.timeout.ms=18000
+group.initial.rebalance.delay.ms=0
+#
+# SASL + GSSAPI
+#
+listeners=SASL_PLAINTEXT://kafka-centos-8:9092
+sasl.kerberos.service.name=kafka
+sasl.mechanism.inter.broker.protocol=GSSAPI
+sasl.enabled.mechanisms=GSSAPI
+security.inter.broker.protocol=SASL_PLAINTEXT
+
+
+vi /opt/kafka/config/producer.jaas.conf
+
+
+KafkaClient {
+    com.sun.security.auth.module.Krb5LoginModule required debug=true
+    useKeyTab=true
+    storeKey=true
+    useTicketCache=true
+    keyTab="/etc/security/keytabs/producer-kafka-centos-8.keytab"
+    principal="producer/kafka-centos-8@KAFKA.DOMAIN";
+};
+
+vi /opt/kafka/config/producer.sasl-gssapi.properties
+
+bootstrap.servers=kafka-centos-8:9092
+#
+# SASL + GSSAPI
+#
+sasl.kerberos.service.name=kafka
+sasl.mechanism=GSSAPI
+security.protocol=SASL_PLAINTEXT
+
+vi /opt/kafka/config/consumer.jaas.conf
+
+
+KafkaClient {
+    com.sun.security.auth.module.Krb5LoginModule required debug=true
+    useKeyTab=true
+    storeKey=true
+    useTicketCache=true
+    keyTab="/etc/security/keytabs/consumer-kafka-centos-8.keytab"
+    principal="consumer/kafka-centos-8@KAFKA.DOMAIN";
+};
+
+vi /opt/kafka/config/consumer.sasl-gssapi.properties
+
+bootstrap.servers=kafka-centos-8:9092
+#
+# SASL + GSSAPI
+#
+sasl.kerberos.service.name=kafka
+sasl.mechanism=GSSAPI
+security.protocol=SASL_PLAINTEXT
+
+
+export EXTRA_ARGS=”-Djava.security.auth.login.config=/opt/kafka/config/zookeeper.jaas.conf”
+bin/zookeeper-server-start.sh config/zookeeper.sasl-gssapi.properties
+
+export KAFKA_OPTS=-Djava.security.auth.login.config=/opt/kafka/config/server.jaas.conf
+bin/kafka-server-start.sh config/server.sasl-gssapi.properties
+
+export KAFKA_OPTS=-Djava.security.auth.login.config=/opt/kafka/config/producer.jaas.conf
+bin/kafka-console-producer.sh --producer.config config/producer.sasl-gssapi.properties --topic quickstart-events --bootstrap-server kafka-centos-8:9092
+
+export KAFKA_OPTS=-Djava.security.auth.login.config=/opt/kafka/config/consumer.jaas.conf
+bin/kafka-console-consumer.sh --consumer.config config/consumer.sasl-gssapi.properties --topic quickstart-events --bootstrap-server kafka-centos-8:9092
