@@ -1,22 +1,45 @@
-from confluent_kafka import Consumer
+#!/usr/bin/env python3
 
-c = Consumer({
-    'bootstrap.servers': 'kafka-centos-8:29092',
-    'group.id': 'test',
-    'auto.offset.reset': 'earliest'
-})
+import json
+from confluent_kafka.avro import AvroConsumer
+from confluent_kafka import Consumer, KafkaException, avro
 
-c.subscribe(['first_topic'])
 
-for i in range(10):
-    msg = c.poll(1.0)
+def read_data():
 
-    if msg is None:
-        continue
-    if msg.error():
-        print("Consumer error: {}".format(msg.error()))
-        continue
+    consumer_config = {
+        "bootstrap.servers": "kafka:29092",
+        "schema.registry.url": "http://kafka:8081",
+        "group.id": "my-connsumer1",
+        "auto.offset.reset": "earliest"
+    }
 
-    print('Received message: {}'.format(msg.value().decode('utf-8')))
+    #print(key_schema)
+    #print(value_schema)
 
-c.close()
+    consumer = AvroConsumer(consumer_config)
+    consumer.subscribe(['movie-topic'])
+
+    for i in range(15):
+      try:
+        msg = consumer.poll(1)
+
+        if msg is None:
+          continue
+
+        print("Key is :" + json.dumps(msg.key()))
+        print("Value is :" + json.dumps(msg.value()))
+        print("-------------------------")
+
+      except KafkaException as e:
+        print('Kafka failure ' + e)
+
+    consumer.close()
+
+def main():
+    read_data()
+
+
+if __name__ == "__main__":
+    main()
+
