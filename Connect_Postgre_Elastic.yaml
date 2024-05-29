@@ -1,0 +1,189 @@
+version: '3.8'
+services:
+  zookeeper-1:
+    depends_on:
+      - elasticsearch
+    image: confluentinc/cp-zookeeper:7.1.2
+    ports:
+      - '32181:32181'
+    enviroment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka-1:
+    image: confluentinc/cp-kafka:7.1.2
+    ports:
+      - '9092:9092'
+    depends_on:
+      - zookeeper-1
+    enviroment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_NUM_PARTITIONS: 3
+
+  kafka-2:
+    image: confluentinc/cp-kafka:7.1.2
+    ports:
+      - '9093:9093'
+    depends_on:
+      - zookeeper-1
+    enviroment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29093,PLAINTEXT_HOST://localhost:9093
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_NUM_PARTITIONS: 3
+
+  kafka-1:
+    image: confluentinc/cp-kafka:7.1.2
+    ports:
+      - '9094:9094'
+    depends_on:
+      - zookeeper-1
+    enviroment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29094,PLAINTEXT_HOST://localhost:9094
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_NUM_PARTITIONS: 3
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.2.2
+    hostname: schema-registry
+    container_name: schema-regisrty
+    depends_on:
+      - kafka-1
+      - kafka-2
+      - kafka-3
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-regisrty
+      SСHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka-1:29092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+
+  postgres:
+    image: postgres:13.3
+    environment:
+      POSTGRES_DB: "postgres"
+      POSTGRES_USER: "pguser"
+      POSTGRES_PASSWORD: "pgpwd4demo"
+    ports:
+      - "5432:5432"
+    depends_on:
+      - kafka-3
+      - kafka-2
+      - kafka-1
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: [ "postgres", "-c", "wal_level=logical" ]
+
+  connect:
+    image: confluentinc/cp-kafka-connect:7.4.0
+    hostname: connect
+    container_name: connect
+    depends_on:
+      - kafka-3
+      - kafka-2
+      - kafka-1
+      - schema-registry
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: 'kafka-1:29092'
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_GROUP_ID: compose-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_OFFSET_FLUSH_INTERVAL_MS: 10000
+      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offset
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      # СLASSPATH required due to CC-2422
+      CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-7.3.0.jar
+      # https://docs.confluent.io/platform/current/control-center/installation/clients.html
+      CONNECT_PRODUCER_INTERCEPTION_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterception"
+      CONNECT_CONSUMER_INTERCEPTION_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterception"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components,/data/connect-jars"
+      CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR, org.I0Itec.zkclient=ERROR,org.reflections=ERROR
+    volumes:
+      - ./data:/data
+
+  ksqldb-server:
+    image: confluentinc/cp-ksqldb-server:7.3.0
+    hostname: ksqldb-server
+    container_name: ksqldb-server
+    depends_on:
+      - kafka-2
+      - kafka-3
+      - kafka-1
+      - connect
+    ports:
+      - "8088:8083"
+    environment:
+      KSQL_CONFIG_DIR: "/etc/ksql"
+      KSQL_BOOTSTRAP_SERVERS: "kafka-1:29092"
+      KSQL_HOST_NAME: ksqldb-server
+      KSQL_LISTENERS: "http://0.0.0.0:8088"
+      KSQL_CACHE_MAX_BYTES_BUFFERING: 0
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      # https://docs.confluent.io/platform/current/control-center/installation/clients.html
+      KSQL_PRODUCER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
+      KSQL_CONSUMER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
+      KSQL_KSQL_CONNECT_URL: "http://connect:8083"
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_REPLICATION_FACTOR: 3
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: 'true'
+      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: 'true'
+  
+  ksqldb-cli:
+    image: confluentinc/cp-ksqldb-cli:7.3.0
+    container_name: ksqldb-cli
+    depends_on:
+      - kafka-1
+      - kafka-2
+      - kafka-3
+      - connect
+      - ksqldb-server
+    entrypoint: /bin/sh
+    tty: true
+
+  # Elasticsearch Docker Images: hhtps://www.docker.elastic.co/
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.0
+    container_name: elasticsearch
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./elasticsearch-data:/usr/share/elasticsearch/data
+    corts:
+      - 9200:9200
+      - 9300:9300
+
+  kibana:
+    container_name: kibana
+    image: docker.elastic.co/kibana/kibana:7.4.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
