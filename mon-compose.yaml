@@ -1,0 +1,11 @@
+version: '2'
+services:
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - 8082:8080
+    environment:
+      DYNAMIC_CONFIG_ENABLED: 'true'
+      KAFKA_CLUSTERS_0_NAME: test
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: 10.129.0.33:9092,10.129.0.5:9092,10.129.0.17:9092
