@@ -1,0 +1,40 @@
+mysql -u root --p
+mysql -h localhost -u root -p connect_test < /tmo/test.sql
+
+create table test
+(
+     id serial NOT NULL PRIMARY KEY, 
+     name varchar(100),
+     email varchar(200),
+     department varchar(200),
+     modified timestamp default CURRENT_TIMESTAMP NOT NULL,
+     INDEX `modified_index` (`modified`)
+);
+
+insert into test (id, name , email, department) values
+                            (1, 'bob', 'bob@abc.com', 'engineering'),
+                            (2, 'alice', 'alice@abc.com', 'sales'),
+                            (3, 'bill', 'bill@abc.com', 'sales'),
+                            (4, 'ted', 'ted@abc.com', 'sales'),
+                            (5, 'sindy', 'sindy@abc.com', 'sales'),
+                            (6, 'lloyd', 'lloyd@abc.com', 'sales'),
+                            (7, 'sid', 'sid@abc.com', 'sales'),
+                            (8, 'nancy', 'nancy@abc.com', 'sales'),
+                            (9, 'frank', 'frank@abc.com', 'sales'),
+                            (10, 'lisa', 'lisa@abc.com', 'sales');
+
+
+CREATE DATABASE connect_test;
+
+INSERT INTO test (id, name , email, department) VALUES (1, 'bob', 'bob@abc.com', 'engineering');
+
+docker-compose run --rm kafka kafka-topics --create --topic quickstart-avro-offsets --partitions 1 --replication-factor 1 --if-not-exists --zookeeper zookeeper:32181 --config cleanup.policy=compact
+docker-compose run --rm kafka kafka-topics --create --topic quickstart-avro-status --partitions 1 --replication-factor 1 --if-not-exists --zookeeper zookeeper:32181 --config cleanup.policy=compact
+docker-compose run --rm kafka kafka-topics --create --topic quickstart-avro-config --partitions 1 --replication-factor 1 --if-not-exists --zookeeper zookeeper:32181 --config cleanup.policy=compact
+
+curl -X POST \
+-H "Content-Type: application/json" \
+--data '{ "name": "quickstart-jdbc-source", "config": { "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector", "tasks.max": 1, "connection.url": "jdbc:mysql://mysql:3306/connect_test", "connection.user": "root", "connection.password": "test", "mode": "incrementing", "incrementing.column.name": "id", "timestamp.column.name": "modified", "topic.prefix": "quickstart-jdbc-", "poll.interval.ms": 1000 } }' \
+http://localhost:28083/connectors
+
+curl -s -X GET http://localhost:28083/connectors/quickstart-jdbc-source/status
